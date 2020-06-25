@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Force-Direct Layout</title>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://d3js.org/queue.v1.min.js"></script>
+</head>
+<body>
+<div id="mainBlock">
+
+</div>
+
+<script>
+    var height = 1000, width = 1000, padding = 25;
+    var svg = d3.select('#mainBlock')
+        .append('svg')
+        .attr('height', height)
+        .attr('width', width);
+
+    var lgraph = svg.append('g')
+        .attr('id', 'lgraph')
+        .attr('transform', 'translate(' + padding + ',' + padding + ')');
+    var graph = svg.append('g')
+        .attr('id', 'graph')
+        .attr('transform', 'translate(' + padding + ',' + padding + ')');
+
+    d3.json('miserables.json', function (data) {
+        return data;
+    })
+        .then(function (d) {
+            var nodes = d.nodes, links = d.links;
+            var colors = ['#277430', '#3675a2', '#c1e1a4', '#d174a7', '#9cbb3e', '#bca33f',
+            '#0c1725', '#f3dcec', '#3b1520', '#a63b46', '#cc8e70'];
+            // node id   edges      adjacency matrix
+            var name = [], edge = [], matrix = [], groups = [];
+            const inf = -1;
+            // initialize the adjacency matrix
+            for(let i = 0; i < nodes.length; ++i) {
+                matrix[i] = [];
+                for(let j = 0; j < nodes.length; ++j)
+                    matrix[i][j] = inf;
+            }
+            for (let i = 0; i < nodes.length; ++i) {
+                name[i] = nodes[i].name;
+                groups[i] = Number(nodes[i].group);
+            }
+            for (let i = 0; i < links.length; ++i) {
+                let source = links[i].source
+                target = links[i].target
+                value = links[i].value;
+                edge[i] = [source, target];
+                matrix[target][source] = value;
+            }
+            // name = ['n1', 'n2', 'n3', 'n4', 'n5'];
+            // edge = [[0, 1], [0, 2], [0, 3], [0, 4]];
+
+            init(name, edge, groups, colors)
+            run(300, name, matrix, edge);
+
+        });
+
+    function init(name, lines, groups, colors) {
+        drawCirle(name, groups, colors);
+    }
+
+    function drawCirle(name, groups, colors) {
+        graph.selectAll('circle')
+            .data(name)
+            .enter()
+            .append('circle')
+            .attr('cx', function () {
+                return Math.floor(Math.random() * 600 + 200);
+            })
+            .attr('cy', function () {
+                return Math.floor(Math.random() * 600 + 200);
+            })
+            .attr('r', function () {
+                return 15;
+            })
+            .attr('forceX', 0)
+            .attr('forceY', 0)
+            .attr('fill', (d, i) => {
+                return colors[groups[i]];
+            })
+            .attr('id', (d, i) => ('name' + i));
+    }
+
+    function drawLine(name, lines) {
+        lgraph.selectAll('line')
+            .data(lines)
+            .enter()
+            .append('line')
+            .attr('x1', function (d) {
+                return d3.select('#name' + d[0]).attr('cx');
+            })
+            .attr('y1', function (d) {
+                return d3.select('#name' + d[0]).attr('cy')
+            })
+            .attr('x2', function (d) {
+                return d3.select('#name' + d[1]).attr('cx');
+            })
+            .attr('y2', function (d) {
+                return d3.select('#name' + d[1]).attr('cy');
+            })
+            .attr('stroke', 'black')
+            .attr('stroke-width', 1.5);
+    }
+
+    function forceReplusion(name) {
+        var k = 1e4;
+        var node1, x1, y1;
+        for(let i = 0; i < name.length; ++i) {
+            node1 = d3.select('#name' + i);
+            x1 = Number(node1.attr('cx'));
+            y1 = Number(node1.attr('cy'));
+            var node2, x2, y2, distsq, dist, dx, dy, f, fx, fy;
+            for(let j = i + 1; j < name.length; ++j) {
+                node2 = d3.select('#name' + j);
+                x2 = Number(node2.attr('cx'));
+                y2 = Number(node2.attr('cy'));
+                dx = x1 - x2;
+                dy = y1 - y2;
+                if(dx !== 0 || dy !== 0) {
+                    distsq = dx * dx + dy * dy;
+                    dist = Math.sqrt(distsq);
+                    // 计算库仑力
+                    f = k / distsq;
+                    // 计算分力
+                    fx = f / dist * dx;
+                    fy = f / dist * dy;
+                    var forceX = Number(node1.attr('forceX')),
+                        forceY = Number(node1.attr('forceY'));
+                    // console.log(f)
+                    // console.log('R', forceX, forceY);
+                    node1.attr('forceX', forceX + fx);
+                    node1.attr('forceY', forceY + fy);
+                    forceX = Number(node2.attr('forceX'));
+                    forceY = Number(node2.attr('forceY'));
+                    node2.attr('forceX', forceX - fx);
+                    node2.attr('forceY', forceY - fy);
+                }
+            }
+        }
+    }
+
+    function forceSpring(name, matrix) {
+        const k = 0.01, l = 100, len = name.length;
+        var node1, x1, y1;
+        for(let i = 0; i < len; ++i) {
+            node1 = d3.select('#name' + i);
+            x1 = Number(node1.attr('cx'));
+            y1 = Number(node1.attr('cy'));
+            var node2, x2, y2, distsq, dist, dx, dy, f, fx, fy;
+            for(let j = i + 1; j < len; ++j) {
+                if(matrix[i][j] === -1) continue;
+                node2 = d3.select('#name' + j);
+                x2 = Number(node2.attr('cx'));
+                y2 = Number(node2.attr('cy'));
+                dx = x1 - x2;
+                dy = y1 - y2;
+                if(dx !== 0 || dy !== 0) {
+                    distsq = dx * dx + dy * dy;
+                    dist = Math.sqrt(distsq);
+                    f = k * (dist - l);
+                    fx = f / dist * dx;
+                    fy = f / dist * dy;
+                    var forceX = Number(node1.attr('forceX')),
+                        forceY = Number(node1.attr('forceY'));
+                    node1.attr('forceX', forceX - fx);
+                    node1.attr('forceY', forceY - fy);
+                    forceX = Number(node2.attr('forceX'));
+                    forceY = Number(node2.attr('forceY'));
+                    node2.attr('forceX', forceX + fx);
+                    node2.attr('forceY', forceY + fy);
+                }
+            }
+        }
+    }
+
+    function update(name) {
+        const dt = 0.001;
+        var dx, dy, nx, ny, d;
+        for(let i = 0; i < name.length; ++i) {
+            var node = d3.select('#name' + i);
+            nx = Number(node.attr('cx'));
+            ny = Number(node.attr('cy'));
+            // 计算各个方向上的位移
+            dx = Number(node.attr('forceX')) * dt;
+            dy = Number(node.attr('forceY')) * dt;
+            // 计算合位移
+            d = Math.sqrt(dx * dx + dy * dy);
+            // 位移超过50
+            if(d > 50) {
+                var alpha = 50 / d;
+                dx*=alpha;
+                dy*=alpha;
+            }
+            nx += dx;
+            ny += dy;
+            // 限制可视的位置
+            nx = nx > 900 ? 900 : nx;
+            nx = nx < 100 ? 100 : nx;
+            ny = ny > 900 ? 900 : ny;
+            ny = ny < 100 ? 100 : ny;
+            node.attr('cx', nx);
+            node.attr('cy', ny);
+            // 力清零
+            node.attr('fx', 0);
+            node.attr('fy', 0);
+        }
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function run(iteration, name, matrix, edge) {
+        for(let i = 0; i < iteration; ++i) {
+            lgraph.selectAll('line').remove();
+            forceReplusion(name)
+            forceSpring(name, matrix);
+            update(name);
+            drawLine(name, edge);
+            await sleep(100);
+        }
+    }
+</script>
+</body>
+</html>

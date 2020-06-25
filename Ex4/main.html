@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>D3.js柱状图实现</title>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+</head>
+<body>
+<script>
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function update() {
+        var height = 800,
+            width = 1000,
+            array = [5, 1, 6, 3, 4, 2, 7, 9, 8];
+        // 按数值大小映射到高度
+        var hMap = d3.scaleLinear()
+            .domain([d3.min(array), d3.max(array)])
+            .range([50, height - 50]);
+
+        var svg = d3.select('body')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height)
+            .attr('transform', 'translate(650, 100)')
+        t = d3.transition()
+            .duration(1000);
+
+        var gText = svg.append('g')
+            .attr('transform', 'translate(75,' + 0 + ')')
+            .selectAll('text')
+            .data(array)
+            .enter()
+            .append('text')
+            .attr('id', (d, i) => {
+                return "label" + d;
+            })
+            .attr('font-size', '30px')
+            .text((d) => {
+                return d;
+            })
+            .attr('x', (d, i) => {
+                return i * 105;
+            })
+            .attr('y', height)
+            .attr('text-anchor', 'middle')
+            .transition(t)
+            .attr('y', (d) => {
+                return height - hMap(d) - 10;
+            });
+
+        // 添加矩形
+        var gRect = svg.append('g')
+            .attr('transform', 'translate(25,' + 0 + ')')
+            .selectAll('rect')
+            .data(array, (d, i) => {
+                return d;
+            })
+            .enter()
+            .append('rect')
+            .attr('fill', '#FF8C00')
+            .attr('width', 100)
+            .attr('x', (d, i) => {
+                return i * 105;
+            })
+            // 将y坐标定到400
+            .attr('y', (d) => {
+                return height;
+            })
+            .attr('id', (d, i) => {
+                return "rect" + d;
+            })
+            .on('mouseover', function (d, i) {
+                d3.select(this).attr('fill', '#FFA500');
+                d3.select('#label' + d).style('font-weight', 'bold');
+            })
+            .on('mouseout', function (d, i) {
+                d3.select(this).attr('fill', '#FF8C00');
+                d3.select('#label' + d).style('font-weight', 'normal');
+            })
+            .transition(t)
+            // 再定位到height - rect_h
+            .attr('y', (d, i) => {
+                return height - hMap(d);
+            })
+            // 设置高度
+            .attr('height', (d, i) => {
+                return hMap(d);
+            });
+    }
+
+    function swap(array, j) {
+        //交换数据
+        let tmp = array[j];
+        array[j] = array[j + 1];
+        array[j + 1] = tmp;
+        let t_ = d3.transition().duration(1000);
+        //把需要交换的矩形及其label高亮
+        let a = d3.select('#rect' + array[j]).style('fill', 'red'),
+            b = d3.select("#rect" + array[j + 1]).style('fill', 'red'),
+            a_label = d3.select('#label' + array[j]).style('fill', 'red'),
+            b_label = d3.select('#label' + array[j + 1]).style('fill', 'red');
+        // 获取两个矩形的x
+        let a_x = a.attr('x'),
+            b_x = b.attr('x');
+        // 交换后变为正常
+        a.transition(t_).attr('x', b_x).style('fill', '#FF8C00');
+        b.transition(t_).attr('x', a_x).style('fill', '#FF8C00');
+        a_label.transition(t_).attr('x', b_x).style('fill', 'black');
+        b_label.transition(t_).attr('x', a_x).style('fill', 'black');
+    }
+
+    //冒泡
+    async function bubble() {
+        var array = [5, 1, 6, 3, 4, 2, 7, 9, 8];
+        let i, j, len = array.length;
+        for (i = 0; i < len - 1; ++i) {
+            for (j = 0; j < len - i; ++j) {
+                if (array[j] > array[j + 1]) {
+                    swap(array, j);
+                    await sleep(1100);
+                }
+            }
+        }
+    }
+
+    async function visual() {
+        //添加矩形
+        update();
+        await sleep(1100);
+        //冒泡
+        bubble();
+    }
+
+    visual();
+
+</script>
+</body>
+</html>

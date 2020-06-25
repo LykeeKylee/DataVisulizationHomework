@@ -1,0 +1,246 @@
+<html>  
+  <head>  
+        <meta charset="utf-8">  
+        <title>国内疫情</title>
+  </head> 
+<style>
+    #svgContainer {
+        width: 1200px;
+        height: 1200px;
+        margin: 0 auto;
+    }
+    .tooltip {
+        width: 300px;
+        height: 250px;
+        background-color:rgb(0,0,0);
+        opacity: 0.6;
+        border-radius: 5px;
+        position: relative;
+        top: 130px;
+        text-align: center;
+        line-height: 300px;
+    }
+    .tooltip table {
+        margin: 0 auto;
+        color: #ffffff;
+        font-size: 25px;
+        font-weight: bold;
+        line-height: 30px;
+        padding-top: 15px;
+    }
+    #date {
+        font-size: 30px;
+        position: relative;
+        margin: 0 auto;
+        top: 125px;
+        left: 475px;
+    }
+    input[type="range"] {
+        width: 500px;
+        height: 50px;
+        position: relative;
+        top: 125px;
+        left: 350px;
+    }
+</style>
+<body>
+<div id="svgContainer">
+    <div id="date">Date</div>
+    <input type="range" name="date" min="1" max="5" step="1" value="5" id="slider">
+    <div class="tooltip">
+        <table>
+            <tr><td id="name">##</td></tr>
+            <tr><td>现有确诊病例：</td><td id="curConfirmed"></td></tr>
+            <tr><td>累计确诊病例：</td><td id="Confirmed"></td></tr>
+            <tr><td>现有疑似病例：</td><td id="suspect"></td></tr>
+            <tr><td>痊愈病例：</td><td id="cured"></td></tr>
+            <tr><td>死亡病例：</td><td id="dead"></td></tr>
+            <tr><td>死亡率：</td><td id="mortality"></td></tr>
+        </table>
+    </div>
+</div>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script>
+	var width  = 1100, height = 950;
+	var svg = d3.select("#svgContainer").append("svg")
+	    .attr("width", width)
+	    .attr("height", height)
+	    .append("g")
+	    .attr("transform", "translate(50,10)");
+	//title
+    svg.append("text")
+        .attr("x", 420)
+        .attr("y", 50)
+        .attr("dy", "0.3em")
+        .style("font-size", "36px")
+        .text("国内疫情");
+    svg.append("text")
+        .attr("x", 425)
+        .attr("y", 85)
+        .attr("dy", "0.3em")
+        .style("font-size", "15px")
+        .text("截至2020年3月14日");
+    //legend
+    svg.append("text").attr("x", 20).attr("y", 690).attr("dy", "-0.3em").text("现有确诊人数");
+    legend = {"0":["10000~","#800026"], "1":[ "1000-9999", "#993347"], "2":[ "100-999", "#b36668"],
+        "3":[ "10-99", "#cc998a"], "4":[ "1-9", "#e6ccab"], "5":["0", "#ffffcc"]};
+    var offset = 0;
+    for(var l in legend) {
+        svg.append("rect").attr("x", 20).attr("y", 700 + offset).attr("width", 20).attr("height", 20).style("fill", legend[l][1]);
+        svg.append("text").attr("x", 45).attr("y", 700 + offset + 20).attr("dy", "-0.3em").text(legend[l][0]);
+        offset += 25;
+    }
+	var projection = d3.geo.mercator().center([107, 31]).scale(850).translate([width/2, height/2]);
+	var path = d3.geo.path().projection(projection);
+	d3.json("china.json", function(error, root) {
+		if (error) 
+			return console.error(error);
+		svg.selectAll("path")
+			.data(root.features)
+			.enter()
+			.append("path")
+			.attr("stroke", "#000")
+			.attr("stroke-width",1)
+            .attr("id", (d, i) => {
+                return "p" + d.properties.adcode;
+            })
+			.attr("d", path)
+			.on("mouseover",function(d,i){
+                d3.select(this)
+                    .attr("fill-opacity","0.5");
+            })
+            .on("mouseout",function(d,i){
+                d3.select(this)
+                    .attr("fill-opacity","1");
+            });
+        d3.select("#date").text("2020年3月14日");
+        d3.json("3_14.json", (error, area) => {
+            if(error) return console.log(error);
+            var allArea = area.results;
+            var ChinaArea = [];
+            var allOver = [0, 0, 0, 0, 0, 0.0];
+            allArea.forEach((area, index) => {
+                if(area.countryEnglishName === "China"){
+                    ChinaArea[area.locationId] = [area.provinceName, area.currentConfirmedCount, area.confirmedCount,
+                        area.suspectedCount, area.curedCount, area.deadCount];
+                    allOver[0] += area.currentConfirmedCount;
+                    allOver[1] += area.confirmedCount;
+                    allOver[2] += area.suspectedCount;
+                    allOver[3] += area.curedCount;
+                    allOver[4] += area.deadCount;
+                }
+            });
+            allOver[5] = allOver[4] / allOver[1];
+            showTip(allOver);
+            //color the map
+            var colorMap = d3.interpolate("#ffffcc", "#800026");
+            var linear = d3.scale.linear().domain([0, 1000]).range([0, 100]);
+            for(let area in ChinaArea) {
+                let num = ChinaArea[area][1], fill_Color;
+                fill_Color = fillColor(num, colorMap, linear);
+                //click the path to show the data
+                d3.select("#p" + area)
+                    .attr("fill", fill_Color)
+                    .on("click", function () {
+                        let name = ChinaArea[area][0];
+                        let pdata = ChinaArea[area].slice(1, 6);
+                        // console.log(pdata);
+                        pdata.push(pdata[4] / pdata[1]);
+                        showTip(pdata, name);
+                    })
+            }
+        });
+        //滑动slider选择日期
+        d3.select("#slider").on("mouseup", () => {
+            let sValue = d3.select("#slider").property("value"), date = '3_14';
+            let showDate = d3.select("#date");
+            if(sValue === "1") {
+                showDate.text("2020年2月15日");
+                date = '2_15';
+            }
+            else if(sValue === "2"){
+                showDate.text("2020年2月22日");
+                date = '2_22';
+            }
+            else if(sValue === "3") {
+                showDate.text("2020年2月29日");
+                date = '2_29';
+            }
+            else if(sValue === "4") {
+                showDate.text("2020年3月7日");
+                date = '3_07';
+            }
+            else if(sValue === "5") {
+                showDate.text("2020年3月14日");
+                date = '3_14';
+            }
+            //读取数据
+            d3.json(date + ".json", (error, area) => {
+                if(error) return console.log(error);
+                var allArea = area.results;
+                var ChinaArea = [];
+                var allOver = [0, 0, 0, 0, 0, 0.0];
+                //统计全国信息
+                allArea.forEach((area, index) => {
+                    if(area.countryEnglishName === "China"){
+                        ChinaArea[area.locationId] = [area.provinceName, area.currentConfirmedCount, area.confirmedCount,
+                            area.suspectedCount, area.curedCount, area.deadCount];
+                        allOver[0] += area.currentConfirmedCount;
+                        allOver[1] += area.confirmedCount;
+                        allOver[2] += area.suspectedCount;
+                        allOver[3] += area.curedCount;
+                        allOver[4] += area.deadCount;
+                    }
+                });
+                allOver[5] = allOver[4] / allOver[1];
+                showTip(allOver);
+                //color the map
+                var colorMap = d3.interpolate("#ffffcc", "#800026");
+                var linear = d3.scale.linear().domain([0, 1000]).range([0, 100]);
+                for(let area in ChinaArea) {
+                    let num = ChinaArea[area][1], fill_Color;
+                    fill_Color = fillColor(num, colorMap, linear);
+                    //click the path to show the data
+                    d3.select("#p" + area)
+                        .attr("fill", fill_Color)
+                        .on("click", function () {
+                            let name = ChinaArea[area][0];
+                            let pdata = ChinaArea[area].slice(1, 6);
+                            // console.log(pdata);
+                            pdata.push(pdata[4] / pdata[1]);
+                            showTip(pdata, name);
+                        })
+                }
+            });
+        });
+	});
+
+	function showTip(allOver, name="全国") {
+        d3.select("#name").text(name);
+        d3.select("#curConfirmed").text(allOver[0]);
+        d3.select("#Confirmed").text((allOver[1]));
+        d3.select("#suspect").text((allOver[2]));
+        d3.select("#cured").text((allOver[3]));
+        d3.select("#dead").text((allOver[4]));
+        d3.select("#mortality").text(((allOver[5] * 100).toFixed(1)) + "%");
+    }
+	function fillColor(num, colorMap, linear) {
+	    let fill_Color;
+        if(num === 0)
+            fill_Color = colorMap(linear(0) / 100);
+        else if(num <= 9)
+            fill_Color = colorMap(linear(200) / 100);
+        else if(num <= 99)
+            fill_Color = colorMap(linear(400) / 100);
+        else if(num <= 999)
+            fill_Color = colorMap(linear(600) / 100);
+        else if(num <= 9999)
+            fill_Color = colorMap(linear(800) / 100);
+        else
+            fill_Color = colorMap(linear(1000) / 100);
+        return fill_Color;
+    }
+</script>
+	
+</body>  
+</html>  

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<html>
+<head>
+    <style>
+
+        .names {
+            fill: none;
+            stroke: #fff;
+            stroke-linejoin: round;
+        }
+
+        /* Tooltip CSS */
+        .d3-tip {
+            line-height: 1.5;
+            font-weight: 400;
+            font-family: "avenir next", Arial, sans-serif;
+            padding: 6px;
+            background: rgba(0, 0, 0, 0.6);
+            color: #FFA500;
+            border-radius: 1px;
+            pointer-events: none;
+        }
+
+        /* Creates a small triangle extender for the tooltip */
+        .d3-tip:after {
+            box-sizing: border-box;
+            display: inline;
+            font-size: 8px;
+            width: 100%;
+            line-height: 1.5;
+            color: rgba(0, 0, 0, 0.6);
+            position: absolute;
+            pointer-events: none;
+
+        }
+
+        /* Northward tooltips */
+        .d3-tip.n:after {
+            content: "\25BC";
+            margin: -1px 0 0 0;
+            top: 100%;
+            left: 0;
+            text-align: center;
+        }
+
+        /* Eastward tooltips */
+        .d3-tip.e:after {
+            content: "\25C0";
+            margin: -4px 0 0 0;
+            top: 50%;
+            left: -8px;
+        }
+
+        /* Southward tooltips */
+        .d3-tip.s:after {
+            content: "\25B2";
+            margin: 0 0 1px 0;
+            top: -8px;
+            left: 0;
+            text-align: center;
+        }
+
+        /* Westward tooltips */
+        .d3-tip.w:after {
+            content: "\25B6";
+            margin: -4px 0 0 -1px;
+            top: 50%;
+            left: 100%;
+        }
+
+        /*    text{
+              pointer-events:none;
+            }*/
+
+        .details {
+            color: white;
+        }
+
+        a {
+            font-size: 20px;
+        }
+    </style>
+
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+    <script src="https://d3js.org/queue.v1.min.js"></script>
+    <link href="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.staticfile.org/jquery/2.1.1/jquery.min.js"></script>
+    <script src="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <script src="./d3-tip.js"></script>
+
+</head>
+<body>
+<div id="title" style="width: 450px; margin: 0px auto; height: 100px;">
+    <h2>2020年3月28日-世界疫情<br><small id="subtitle" class="pull-right">——各国累计确诊情况</small></h2>
+</div>
+<div class="dropdown" style="height: 50px; width: 300px; margin: 5px auto; ">
+    <button type="button" class="btn dropdown-toggle" id="choice" data-toggle="dropdown" style="height: 100%; width: 100%;font-size: 20px;">请选择
+        <span class="caret"></span>
+    </button>
+    <ul class="dropdown-menu" role="menu" aria-labelledby="choice" style="width: 100%;">
+        <li role="presentation">
+            <a role="menuitem" tabindex="-1" href="#" class="show">累计确诊人数</a>
+        </li>
+        <li role="presentation">
+            <a role="menuitem" tabindex="-1" href="#" class="show">当前确诊人数</a>
+        </li>
+        <li role="presentation">
+            <a role="menuitem" tabindex="-1" href="#" class="show">累计死亡人数</a>
+        </li>
+        <li role="presentation">
+            <a role="menuitem" tabindex="-1" href="#" class="show">累计治愈人数</a>
+        </li>
+    </ul>
+</div>
+<div id="world_map" style="margin: 0 auto; width: 2000px;"></div>
+
+
+<script>
+
+    var margin = {top: 0, right: 0, bottom: 0, left: 0},
+        width = 1960 - margin.left - margin.right,
+        height = 1000 - margin.top - margin.bottom;
+
+    var svg = d3.select("#world_map")   //解释svg元素，参考wiki svg ; or this tomato  example: https://upload.wikimedia.org/wikipedia/commons/e/e7/Tomate.svg
+        .append("svg")
+        .call(d3.zoom()     // 注意需要放在这里，以监测svg元素，可以测试放在g元素的效果。
+            .scaleExtent([1, 10])
+            .on("zoom", zoomHandler))
+        .attr("width", width)
+        .attr("height", height)
+        .append('g')
+        .attr('class', 'map');
+
+    var projection = d3.geoMercator()
+        .scale(145)
+        .translate([width / 2, height / 1.8]);
+
+    var path = d3.geoPath().projection(projection);
+
+    //除治愈人数使用colorWell, 其他使用colorDanger
+    var colorDanger = (["rgb(255,245,240)", "rgb(254,224,210)", "rgb(252,187,161)", "rgb(252,146,114)", "rgb(251,106,74)", "rgb(239,59,44)", "rgb(203,24,29)", "rgb(165,15,21)", "rgb(103,0,13)", "rgb(70,0,10)"]),
+        colorWell = ((["rgb(247,252,245)", "rgb(229,245,224)", "rgb(199,233,192)", "rgb(161,217,155)", "rgb(116,196,118)", "rgb(65,171,93)", "rgb(35,139,69)", "rgb(0,109,44)", "rgb(0,68,27)", "rgb(0,32,10)"]))
+
+    // 进入页面显示累计确诊人数
+    queue()
+        .defer(d3.json, "./world_countries.json")   //通过https://jsoneditoronline.org/介绍
+        .defer(d3.csv, "./covid19 - 03-28-2020.csv")
+        .await(ready);
+
+    //根据下拉菜单切换
+    d3.selectAll(".show").on("click", (data, index)=>{
+        var b = d3.select("#choice");
+        if(index === 0) b.text("累计确诊人数");
+        else if(index === 1) b.text("当前确诊人数");
+        else if(index === 2) b.text("累计死亡人数");
+        else b.text("累计治愈人数");
+        //删除重复的模块
+        d3.select(".countries").remove();
+        d3.select(".d3-tip ").remove();
+        d3.selectAll(".legendtext").remove();
+        d3.selectAll("rect").remove();
+        queue()
+            .defer(d3.json, "./world_countries.json")   //通过https://jsoneditoronline.org/介绍
+            .defer(d3.csv, "./covid19 - 03-28-2020.csv")
+            .await(ready);
+    });
+
+    function ready(error, data, covid_data) {
+        //累计确诊 现存确诊 累计死亡 累计治愈
+        var totalconfirmed = {}, curconfirmed = {}, death = {}, recovered = {};
+        covid_data.forEach(function (d) {
+            if (isNaN(totalconfirmed[d.Country_Region])) {
+                totalconfirmed[d.Country_Region] = Number(d.Confirmed);
+                curconfirmed[d.Country_Region] = Number(d.Confirmed) - Number(d.Deaths) - Number(d.Recovered);
+                death[d.Country_Region] = Number(d.Deaths);
+                recovered[d.Country_Region] = Number(d.Recovered);
+            } else {
+                //如果是台湾，累加到中国
+                if (d.Country_Region === "Taiwan*") {
+                    totalconfirmed["China"] += Number(d.Confirmed);
+                    curconfirmed["China"] += (Number(d.Confirmed) - Number(d.Deaths) - Number(d.Recovered));
+                    death["China"] += Number(d.Deaths);
+                    recovered["China"] += Number(d.Recovered);
+                }
+                totalconfirmed[d.Country_Region] += Number(d.Confirmed);  //F12，step-wise debug illustration  调试技巧很重要
+                curconfirmed[d.Country_Region] += (Number(d.Confirmed) - Number(d.Deaths) - Number(d.Recovered));
+                death[d.Country_Region] += Number(d.Deaths);
+                recovered[d.Country_Region] += Number(d.Recovered);
+            }
+        });
+        // console.log(totalconfirmed);
+        // console.log(curconfirmed);
+        // console.log(death);
+        data.features.forEach(function (d) {
+            d.totalconfirmed = totalconfirmed[d.properties.name];
+            d.curconfirmed = curconfirmed[d.properties.name];
+            d.death = death[d.properties.name];
+            d.recovered = recovered[d.properties.name];
+        });
+
+        //根据下拉菜单的选择显示数据
+        var data_show, curMap = d3.select("#choice").text(), label, subtitle = d3.select("#subtitle");
+        if(curMap === "当前确诊人数") {
+            data_show = curconfirmed;
+            label = "Current Confirmed: ";
+            subtitle.text("——各国当前确诊情况");
+        }
+        else if(curMap === "累计死亡人数") {
+            data_show = death;
+            label = "Total Death: ";
+            subtitle.text("——各国死亡人数情况");
+        }
+        else if(curMap === "累计治愈人数") {
+            data_show = recovered;
+            label = "Total Recovered: ";
+            subtitle.text("——各国治愈人数情况");
+        }
+        else {
+            data_show = totalconfirmed;
+            label = "Total Confirmed: ";
+            subtitle.text("——各国累计确诊情况");
+        }
+
+        //插值
+        var lower = -1, upper = -1;
+        for (let k in data_show) {
+            if (upper === -1) upper = data_show[k];
+            else if (data_show[k] > upper) upper = data_show[k];
+            if (lower === -1) lower = data_show[k];
+            else if (data_show[k] < lower) lower = data_show[k];
+        }
+        let dx = (upper - lower) / 10, x = lower, numDomain = [];
+        while(x <= upper) {
+            numDomain.push(Math.round(x));
+            x += dx;
+        }
+        var color = d3.scaleThreshold()
+            .domain(numDomain)
+            .range(curMap === "累计治愈人数" ? colorWell: colorDanger);
+
+        // 显示图例
+        var legend = {};
+        // 读取颜色和数量组成字典
+        for(let i = 0; i < numDomain.length; ++i) {
+            let tmp = [curMap === "累计治愈人数" ? colorWell[numDomain.length - 1 - i]: colorDanger[numDomain.length - 1 - i]];
+            tmp.push("≥ " + numDomain[numDomain.length - 1 - i]);
+            legend[i] = tmp;
+        }
+        legend[numDomain.length] = ["#deebf7", "Unknow"];
+        // 根据字典内容，创建图例
+        var offset = 0;
+        for(var l in legend) {
+            svg.append("rect").attr("x", 320).attr("y", 700 + offset).attr("width", 20).attr("height", 20).style("fill", legend[l][0]);
+            svg.append("text").attr("class", "legendtext").attr("x", 345).attr("y", 700 + offset + 20).attr("dy", "-0.3em").text(legend[l][1]);
+            offset += 25;
+        }
+
+        svg.append("g")
+            .attr("class", "countries")
+            .selectAll("path")
+            .data(data.features)
+            .enter()        //TODO enter机制，d3重点，以后再讲
+            .append("path")  //讲解 g中的path 元素；
+            .attr("d", path)  //调用上面的path方法，以实现具体的投影方式
+            .attr("id", function (d) {
+                return d.properties.name;
+            })
+            .style("fill", function (d) {
+                if (d.properties.name === "Taiwan")  //only for code hack illustration
+                    return color(data_show["China"]);
+                if(isNaN(data_show[d.properties.name])) return "#deebf7";
+                return color(data_show[d.properties.name]);
+            })
+            .style('stroke', 'black')
+            .style('stroke-width', 1.6)
+            .style("opacity", 0.8)
+            // tooltips
+            .style("stroke", "black")
+            .style('stroke-width', 0.3)
+            .on('mouseover', function (d) {
+                //TODO 也可以在这里监测TW, 不高亮TW，但是高亮CHN的时候，同时高亮TW。同学们可以自己去实现；当然，下载个正确的地图也就没这些事了。
+                tip.show(d);
+                //同时高亮大陆和台湾
+                if(d.properties.name === "Taiwan") {
+                    d3.select("#China").style("opacity", 1)
+                        .style("stroke", "white")
+                        .style("stroke-width", 2);
+                }
+                if(d.properties.name === "China") {
+                    d3.select("#Taiwan").style("opacity", 1)
+                        .style("stroke", "white")
+                        .style("stroke-width", 2);
+                }
+
+                d3.select(this)
+                    .style("opacity", 1)
+                    .style("stroke", "white")
+                    .style("stroke-width", 2);  //白色边加粗，以高亮。
+            })
+            .on('mouseout', function (d) {   //回到上面设置的style
+                tip.hide(d);
+                if(d.properties.name === "Taiwan") {
+                    d3.select("#China").style("opacity", 0.8)
+                        .style("stroke", "black")
+                        .style("stroke-width", 0.3);
+                }
+                if(d.properties.name === "China") {
+                    d3.select("#Taiwan").style("opacity", 0.8)
+                        .style("stroke", "black")
+                        .style("stroke-width", 0.3);
+                }
+                d3.select(this)
+                    .style("opacity", 0.8)
+                    .style("stroke", "black")
+                    .style("stroke-width", 0.3);
+            });
+
+        var format = d3.format(",");
+        // Set tooltips
+        var tip = d3.tip()
+            .attr('class', 'd3-tip')
+            .offset([-10, 0])
+            .html(function (d) {
+                if (d.properties.name === "Taiwan") {
+                    d.totalconfirmed = totalconfirmed["China"];
+                    //特别注意：地图一定要正确: )
+                }
+                return "<strong>Country: </strong><span class='details'>" + (d.properties.name === "Taiwan" ? "China" : d.properties.name) + "<br></span>" + "<strong>" + label + "</strong><span class='details'>" + (isNaN(data_show[(d.properties.name === "Taiwan" ? "China" : d.properties.name)]) ? "Unknown" : format(data_show[(d.properties.name === "Taiwan" ? "China" : d.properties.name)])) + "</span>";
+            });
+        svg.call(tip);
+    }
+    function zoomHandler() {
+        var transform = d3.event.transform;
+        svg.attr("transform", "translate("
+            + transform.x + "," + transform.y
+            + ")scale(" + transform.k + ")");
+    }
+</script>
+
+
+</body>
+</html>
+
+
+<!--
+Place library script such as the jQuery library in the head section.
+Place normal script in the head unless it becomes a performance/page load issue.
+Place script that impacts the render of the page at the end of the body (before the body closure).
+-->
